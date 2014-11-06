@@ -1,0 +1,162 @@
+#!/usr/bin/perl
+# -*- cperl -*-
+
+=encoding utf8
+
+=head1 NAME
+
+rabbitmq_memory - Munin plugin to monitor RabbitMQ memory usage.
+
+=head1 CONFIGURATION
+
+FIXME
+
+=head1 MAGIC MARKERS
+
+  #%# family=auto
+  #  #%# capabilities=autoconf
+
+=head1 AUTHOR
+
+Written by Michael Jeanson <michael.jeanson@isvtec.com> based upon
+nagios-plugins-rabbitmq by James Casey <jamesc.000@gmail.com>.
+
+=head1 LICENSE
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+=cut
+
+use strict;
+use warnings;
+use Munin::Plugin;
+
+my $ret = undef;
+
+if (! eval "require LWP::UserAgent;") {
+  $ret = "LWP::UserAgent not found";
+  if ( ! defined $ARGV[0] ) {
+    die $ret;
+  }
+}
+
+if (! eval "require URI::Escape;") {
+  $ret = "URI::Escape not found";
+  if ( ! defined $ARGV[0] ) {
+    die $ret;
+  }
+}
+
+if (! eval "require JSON;") {
+  $ret = "JSON not found";
+  if ( ! defined $ARGV[0] ) {
+    die $ret;
+  }
+} else {
+  use JSON;
+}
+
+
+# Autoconf
+if ( defined $ARGV[0] and $ARGV[0] eq "autoconf" ) {
+  if ($ret) {
+    print "no ($ret)\n";
+    exit 0;
+  }
+
+  #FIXME: Add autoconf
+  print "no\n";
+  exit 0;
+}
+
+# Config
+if ( defined $ARGV[0] and $ARGV[0] eq "config" ) {
+  print <<END;
+graph_title RabbitMQ memory
+graph_args --base 1024 -l 0
+graph_vlabel bytes
+graph_category rabbitmq
+
+mem_used.label Memory used
+mem_used.type GAUGE
+mem_used.draw AREA
+mem_used.min 0
+
+mem_limit.label Memory limit
+mem_limit.type GAUGE
+mem_limit.min 0
+
+END
+
+    exit 0;
+}
+
+
+#FIXME: Override default value from munin config
+my $hostname = 'localhost';
+
+my $nodename = '';
+
+if (!$nodename) {
+    $hostname =~ /^([a-zA-Z0-9-]*)/;
+    $nodename = $1;
+}
+
+my $port = 15672;
+my $ssl = 0;
+
+my $path = "nodes/rabbit\@$nodename";
+my $url = sprintf("http%s://%s:%d/api/%s", ($ssl ? "s" : ""), $hostname, $port, $path);
+my $env_proxy = '';
+my $timeout = 10;
+
+my $username = 'guest';
+my $password = 'guest';
+
+my $PROGNAME = "rabbitmq_memory";
+
+my $ua = LWP::UserAgent->new(env_proxy => $env_proxy);
+$ua->agent($PROGNAME.' ');
+$ua->timeout($timeout);
+$ua->credentials("$hostname:$port",
+    "RabbitMQ Management", $username, $password);
+my $req = HTTP::Request->new(GET => $url);
+my $res = $ua->request($req);
+
+if (!$res->is_success) {
+    # Deal with standard error conditions - make the messages more sensible
+    if ($res->code == 400) {
+        my $bodyref = decode_json $res->content;
+        die $bodyref->{'reason'};
+    }
+    $res->code == 404 and die "Not found: ".$path;
+    $res->code == 401 and die "Access refused: ".$path;
+    if ($res->code < 200 or $res->code > 400 ) {
+        die "Received ".$res->status_line." for path: ".$path;
+    }
+}
+
+my $bodyref = decode_json $res->content;
+
+if (!$bodyref->{'running'}) {
+    die "Not running: ".$path;
+}
+
+if (!$bodyref->{'mem_used'} || !$bodyref->{'mem_limit'}) {
+    die 'Unable to get values';
+}
+
+print "mem_used.value ".$bodyref->{'mem_used'}."\n";
+print "mem_limit.value ".$bodyref->{'mem_limit'}."\n";
+
+exit 0;
