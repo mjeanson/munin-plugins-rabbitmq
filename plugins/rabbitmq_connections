@@ -1,0 +1,192 @@
+#!/usr/bin/perl
+# -*- cperl -*-
+
+=encoding utf8
+
+=head1 NAME
+
+rabbitmq_connections - Munin plugin to monitor RabbitMQ connections.
+
+=head1 CONFIGURATION
+
+FIXME
+
+=head1 MAGIC MARKERS
+
+  #%# family=auto
+  #  #%# capabilities=autoconf
+
+=head1 AUTHOR
+
+Written by Michael Jeanson <michael.jeanson@isvtec.com> based upon
+nagios-plugins-rabbitmq by James Casey <jamesc.000@gmail.com>.
+
+=head1 LICENSE
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+=cut
+
+use strict;
+use warnings;
+use Munin::Plugin;
+
+my $ret = undef;
+
+if (! eval "require LWP::UserAgent;") {
+  $ret = "LWP::UserAgent not found";
+  if ( ! defined $ARGV[0] ) {
+    die $ret;
+  }
+}
+
+if (! eval "require URI::Escape;") {
+  $ret = "URI::Escape not found";
+  if ( ! defined $ARGV[0] ) {
+    die $ret;
+  }
+}
+
+if (! eval "require JSON;") {
+  $ret = "JSON not found";
+  if ( ! defined $ARGV[0] ) {
+    die $ret;
+  }
+} else {
+  use JSON;
+}
+
+
+# Autoconf
+if ( defined $ARGV[0] and $ARGV[0] eq "autoconf" ) {
+  if ($ret) {
+    print "no ($ret)\n";
+    exit 0;
+  }
+
+  #FIXME: Add autoconf
+  print "no\n";
+  exit 0;
+}
+
+# Config
+if ( defined $ARGV[0] and $ARGV[0] eq "config" ) {
+  print <<END;
+multigraph rabbitmq_connections
+graph_title RabbitMQ connections
+graph_args --base 1000 -l 0
+graph_vlabel connections
+graph_category rabbitmq
+
+connections.label Connections total
+connections.type GAUGE
+connections.draw LINE1
+connections.min 0
+
+connections_notrunning.label Connections not running
+connections_notrunning.type GAUGE
+connections_notrunning.min 0
+
+multigraph rabbitmq_rates
+graph_title RabbitMQ traffic
+graph_args --base 1024 -l 0
+graph_vlabel bytes in (-) / out (+)
+graph_category rabbitmq
+
+receive_rate.label receive
+receive_rate.type GAUGE
+receive_rate.graph no
+receive_rate.min 0
+
+send_rate.label send
+send_rate.type GAUGE
+send_rate.negative receive_rate
+send_rate.min 0
+
+END
+
+    exit 0;
+}
+
+
+my $hostname = exists $ENV{hostname}  ? $ENV{hostname} : 'localhost';
+
+my $username = exists $ENV{username}  ? $ENV{username} : 'guest';
+my $password = exists $ENV{password}  ? $ENV{password} : 'guest';
+
+my $port = exists $ENV{port}  ? $ENV{port} : '15672';
+my $ssl = exists $ENV{ssl}  ? $ENV{ssl} : 0;
+my $proxy = exists $ENV{proxy}  ? $ENV{proxy} : '';
+my $timeout = exists $ENV{timeout}  ? $ENV{timeout} : '10';
+
+
+my $PROGNAME = "rabbitmq_node";
+
+my $ua = LWP::UserAgent->new(env_proxy => $proxy);
+$ua->agent($PROGNAME.' ');
+$ua->timeout($timeout);
+$ua->credentials("$hostname:$port",
+    "RabbitMQ Management", $username, $password);
+my $url = sprintf("http%s://%s:%d/api/connections", ($ssl ? "s" : ""), $hostname, $port);
+my ($retcode, $result) = request($url);
+if ($retcode != 200) {
+    die "$result : $url";
+}
+
+my $values = {};
+$values->{'connections'} = 0;
+$values->{'connections_notrunning'} = 0;
+$values->{'receive_rate'} = 0;
+$values->{'send_rate'} = 0;
+
+for my $connection (@$result) {
+    $values->{'connections'}++;
+    $values->{'connections_notrunning'}++ if $connection->{"state"} ne "running";
+    $values->{'receive_rate'} += $connection->{"recv_oct_details"}->{"rate"};
+    $values->{'send_rate'} += $connection->{"send_oct_details"}->{"rate"};
+}
+
+
+
+print "multigraph rabbitmq_connections\n";
+print "connections.value ".$values->{'connections'}."\n";
+print "connections_notrunning.value ".$values->{'connections_notrunning'}."\n";
+
+print "multigraph rabbitmq_rates\n";
+print "receive_rate.value ".$values->{'receive_rate'}."\n";
+print "send_rate.value ".$values->{'send_rate'}."\n";
+
+exit 0;
+
+sub request {
+    my ($url) = @_;
+    my $req = HTTP::Request->new(GET => $url);
+    my $res = $ua->request($req);
+
+    if (!$res->is_success) {
+        # Deal with standard error conditions - make the messages more sensible
+        if ($res->code == 400) {
+            my $bodyref = decode_json $res->content;
+            return (400, $bodyref->{'reason'});
+
+        }
+        $res->code == 404 and return (404, "Not Found");
+        $res->code == 401 and return (401, "Access Refused");
+        $res->status_line =~ /Can\'t connect/ and return (500, "Connection Refused : $url");
+        if ($res->code < 200 or $res->code > 400 ) {
+            return ($res->code, "Received ".$res->status_line);
+        }
+    }
+    my $bodyref = decode_json $res->content;
+    return($res->code, $bodyref);
+}
