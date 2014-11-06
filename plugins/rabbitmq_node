@@ -204,15 +204,19 @@ if (!$bodyref->{'mem_used'} || !$bodyref->{'mem_limit'}) {
     die 'Unable to get values';
 }
 
+print "multigraph rabbitmq_memory\n";
 print "mem_used.value ".$bodyref->{'mem_used'}."\n";
 print "mem_limit.value ".$bodyref->{'mem_limit'}."\n";
 
+print "multigraph rabbitmq_proc\n";
 print "proc_used.value ".$bodyref->{'proc_used'}."\n";
 print "proc_total.value ".$bodyref->{'proc_total'}."\n";
 
+print "multigraph rabbitmq_fd\n";
 print "fd_used.value ".$bodyref->{'fd_used'}."\n";
 print "fd_total.value ".$bodyref->{'fd_total'}."\n";
 
+print "multigraph rabbitmq_sockets\n";
 print "sockets_used.value ".$bodyref->{'sockets_used'}."\n";
 print "sockets_total.value ".$bodyref->{'sockets_total'}."\n";
 
