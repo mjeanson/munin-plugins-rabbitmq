@@ -108,7 +108,7 @@ receive_rate.type GAUGE
 receive_rate.graph no
 receive_rate.min 0
 
-send_rate.label send
+send_rate.label Bps
 send_rate.type GAUGE
 send_rate.negative receive_rate
 send_rate.min 0
