@@ -1,0 +1,5 @@
+munin-plugins-rabbitmq (0.1-1) unstable; urgency=low
+
+  * Initial release.
+
+ -- Michael Jeanson <michael.jeanson@isvtec.com>  Fri, 28 Nov 2014 10:03:10 +0100

@@ -1,0 +1,12 @@
+Source: munin-plugins-rabbitmq
+Section: net
+Priority: optional
+Maintainer: Michael Jeanson <michael.jeanson@isvtec.com>
+Uploaders: Michael Jeanson <michael.jeanson@isvtec.com>
+Build-Depends: debhelper (>= 9)
+Standards-Version: 3.9.3
+
+Package: munin-plugins-rabbitmq
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, munin-node, libjson-perl, liburi-perl
+Description: Munin plugins for rabbitmq
